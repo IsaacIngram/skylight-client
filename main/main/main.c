@@ -8,13 +8,15 @@
 
 // DIR_1 9
 // STEP_1 10
+// DIR_2 11
+// STEP_2 12
 
 // Pins
 #define PIN_ENABLE_ALL 8
 #define PIN_DIR_1 25
 #define PIN_STEP_1 26
-#define PIN_DIR_2 11
-#define PIN_STEP_2 12
+#define PIN_DIR_2 12
+#define PIN_STEP_2 13
 #define PIN_DIR_3 13
 #define PIN_STEP_3 14
 #define PIN_DIR_4 15
@@ -163,11 +165,11 @@ static void run_motors(void* pvParameters) {
 
             // Move the motors
             gpio_set_level(left_motor->step_pin, 1);
-            //gpio_set_level(right_motor->step_pin, 1);
+            gpio_set_level(right_motor->step_pin, 1);
             vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
             gpio_set_level(left_motor->step_pin, 0);
+            gpio_set_level(right_motor->step_pin, 0);
             vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
-            //gpio_set_level(right_motor->step_pin, 0);
 
             if(direction == 1) {
                 motors->current_pos += 1;
@@ -192,15 +194,24 @@ int step_target = 0;
 void app_main(void)
 {
 
-    gpio_config_t io_conf = {
+    gpio_config_t motor_1_config = {
         .pin_bit_mask = (1ULL << PIN_DIR_1) | (1ULL << PIN_STEP_1),
         .mode = GPIO_MODE_OUTPUT,
         .intr_type = GPIO_INTR_DISABLE,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
     };
-    gpio_config(&io_conf);
 
+    gpio_config_t motor_2_config = {
+        .pin_bit_mask = (1ULL << PIN_DIR_2) | (1ULL << PIN_STEP_2),
+        .mode = GPIO_MODE_OUTPUT,
+        .intr_type = GPIO_INTR_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+
+    gpio_config(&motor_1_config);
+    gpio_config(&motor_2_config);
 
 
     Motor* blackout_left = malloc(sizeof(Motor));
@@ -232,10 +243,17 @@ void app_main(void)
 
     wait(3);
 
-    printf("STARTING FORWARD MOTION\n");
-
+    printf("Running to 100...\n");
     blackout_pair->target_pos = 100;
     wait(10);
+
+    printf("Running to 20...\n");
+    blackout_pair->target_pos = 20;
+    wait(10);
+
+    printf("Running to 33...\n");
+    blackout_pair->target_pos = 33;
+    wait(5);
 
 }
 
