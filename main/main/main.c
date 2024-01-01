@@ -144,8 +144,8 @@ static void run_motors(void* pvParameters) {
                 direction = 0;
                 steps_to_move *= -1;
             }
-            //gpio_set_level(left_motor->dir_pin, MOTOR_DIRECTION(direction));
-            //gpio_set_level(right_motor->dir_pin, MOTOR_DIRECTION(direction));
+            gpio_set_level(left_motor->dir_pin, MOTOR_DIRECTION(direction));
+            gpio_set_level(right_motor->dir_pin, MOTOR_DIRECTION(direction));
 
             // Adjust speed based on acceleration
             if(movement_start_ticks == -1) {
@@ -158,23 +158,24 @@ static void run_motors(void* pvParameters) {
                 if(motors->current_speed < MAX_SPEED) {
                     int speed_increment = round(MAX_ACCEL * elapsed_seconds);
                     set_speed(motors, motors->current_speed + speed_increment);
-                    printf("new speed %d\n", motors->current_speed + speed_increment);
                 }
             }
-
 
             // Move the motors
             gpio_set_level(left_motor->step_pin, 1);
             //gpio_set_level(right_motor->step_pin, 1);
-            printf("first\n");
             vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
-            //vTaskDelay((1000 / motors->current_speed) / portTICK_PERIOD_MS);
-            printf("second\n");
             gpio_set_level(left_motor->step_pin, 0);
             vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
             //gpio_set_level(right_motor->step_pin, 0);
 
-            motors->current_pos += direction;
+            if(direction == 1) {
+                motors->current_pos += 1;
+            } else {
+                motors->current_pos -= 1;
+            }
+            
+            printf("pos %d\n", motors->current_pos);
 
             // Give up mutex locks
             xSemaphoreGive(left_motor->mutex);
