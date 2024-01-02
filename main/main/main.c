@@ -6,10 +6,22 @@
 #include "esp_system.h"
 #include <math.h>
 
-// DIR_1 9
-// STEP_1 10
-// DIR_2 11
-// STEP_2 12
+// PINOUT Definitions
+#ifdef ON_TARGET
+
+#define PIN_ENABLE_ALL 8
+#define BO_LEFT_DIR_PIN 9
+#define BO_LEFT_STEP_PIN 10
+#define BO_RIGHT_DIR_PIN 11
+#define BO_RIGHT_STEP_PIN 12 
+#define F_LEFT_DIR_PIN 13
+#define F_LEFT_STEP_PIN 14
+#define F_RIGHT_DIR_PIN 15
+#define F_RIGHT_STEP_PIN 16
+#define BUTTON_PIN 17
+#define LED_PIN 18   
+
+#else
 
 // Pins
 #define PIN_ENABLE_ALL 8
@@ -23,6 +35,8 @@
 #define F_RIGHT_STEP_PIN 16
 #define BUTTON_PIN 17
 #define LED_PIN 18
+
+#endif //ON_TARGET
 
 // Motor characteristics
 #define DEFAULT_DIRECTION 0
