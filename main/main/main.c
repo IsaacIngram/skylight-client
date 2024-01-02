@@ -13,16 +13,16 @@
 
 // Pins
 #define PIN_ENABLE_ALL 8
-#define PIN_DIR_1 25
-#define PIN_STEP_1 26
-#define PIN_DIR_2 12
-#define PIN_STEP_2 13
-#define PIN_DIR_3 13
-#define PIN_STEP_3 14
-#define PIN_DIR_4 15
-#define PIN_STEP_4 16
-#define PIN_BUTTON 17
-#define PIN_LED 18
+#define BO_LEFT_DIR_PIN 25
+#define BO_LEFT_STEP_PIN 26
+#define BO_RIGHT_DIR_PIN 12
+#define BO_RIGHT_STEP_PIN 13
+#define F_LEFT_DIR_PIN 13
+#define F_LEFT_STEP_PIN 14
+#define F_RIGHT_DIR_PIN 15
+#define F_RIGHT_STEP_PIN 16
+#define BUTTON_PIN 17
+#define LED_PIN 18
 
 // Motor characteristics
 #define DEFAULT_DIRECTION 0
@@ -71,6 +71,23 @@ static void set_speed(MotorPair *motor_pair, int speed) {
         speed = MAX_SPEED;
     }
     motor_pair->current_speed = speed;
+}
+
+/**
+ * Configure motor GPIO pins
+ * @param step_pin Int step pin
+ * @param dir_pin Int dir pin
+ * 
+*/
+static void config_motor_pins(int step_pin, int dir_pin) {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << dir_pin) | (1ULL << step_pin),
+        .mode = GPIO_MODE_OUTPUT,
+        .intr_type = GPIO_INTR_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+    gpio_config(&io_conf);
 }
 
 /**
@@ -189,57 +206,56 @@ static void run_motors(void* pvParameters) {
     }
 }
 
-int step_target = 0;
-
 void app_main(void)
 {
 
-    gpio_config_t motor_1_config = {
-        .pin_bit_mask = (1ULL << PIN_DIR_1) | (1ULL << PIN_STEP_1),
-        .mode = GPIO_MODE_OUTPUT,
-        .intr_type = GPIO_INTR_DISABLE,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    };
+    config_motor_pins(BO_LEFT_STEP_PIN, BO_LEFT_DIR_PIN);
+    config_motor_pins(BO_RIGHT_STEP_PIN, BO_RIGHT_DIR_PIN);
+    config_motor_pins(F_LEFT_STEP_PIN, F_LEFT_DIR_PIN);
+    config_motor_pins(F_RIGHT_STEP_PIN, F_RIGHT_DIR_PIN);
 
-    gpio_config_t motor_2_config = {
-        .pin_bit_mask = (1ULL << PIN_DIR_2) | (1ULL << PIN_STEP_2),
-        .mode = GPIO_MODE_OUTPUT,
-        .intr_type = GPIO_INTR_DISABLE,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    };
-
-    gpio_config(&motor_1_config);
-    gpio_config(&motor_2_config);
-
-
+    // Configure motors
     Motor* blackout_left = malloc(sizeof(Motor));
     Motor* blackout_right = malloc(sizeof(Motor));
     MotorPair* blackout_pair = malloc(sizeof(MotorPair));
-
+    Motor* filter_left = malloc(sizeof(Motor));
+    Motor* filter_right = malloc(sizeof(Motor));
+    MotorPair* filter_pair = malloc(sizeof(MotorPair));
     // Check for memory allocation errors
-    if (blackout_left == NULL || blackout_right == NULL || blackout_pair == NULL) {
+    if (
+        blackout_left == NULL || blackout_right == NULL || blackout_pair == NULL ||
+        filter_left == NULL || filter_right == NULL || filter_pair == NULL
+        ) {
         esp_restart();
         printf("Memory allocation error.\n");
         return;
     }
-
     blackout_left->mutex = xSemaphoreCreateMutex();
-    blackout_left->dir_pin = PIN_DIR_1;
-    blackout_left->step_pin = PIN_STEP_1;
-
+    blackout_left->dir_pin = BO_LEFT_DIR_PIN;
+    blackout_left->step_pin = BO_LEFT_STEP_PIN;
     blackout_right->mutex = xSemaphoreCreateMutex();
-    blackout_right->dir_pin = PIN_DIR_2;
-    blackout_right->step_pin = PIN_STEP_2;
-
+    blackout_right->dir_pin = BO_RIGHT_DIR_PIN;
+    blackout_right->step_pin = BO_RIGHT_STEP_PIN;
     blackout_pair->left_motor = blackout_left;
     blackout_pair->right_motor = blackout_right;
     blackout_pair->current_pos = 0;
     blackout_pair->target_pos = 0;
     blackout_pair->current_speed = 0;
 
+    filter_left->mutex = xSemaphoreCreateMutex();
+    filter_left->dir_pin = F_LEFT_DIR_PIN;
+    filter_left->step_pin = F_LEFT_STEP_PIN;
+    filter_right->mutex = xSemaphoreCreateMutex();
+    filter_right->dir_pin = F_RIGHT_DIR_PIN;
+    filter_right->step_pin = F_RIGHT_STEP_PIN;
+    filter_pair->left_motor = filter_left;
+    filter_pair->right_motor = filter_right;
+    filter_pair->current_pos = 0;
+    filter_pair->target_pos = 0;
+    filter_pair->current_speed = 0;
+
     xTaskCreate(run_motors, "blackout_run_task", MOTOR_TASK_STACK_SIZE, (void*)blackout_pair, MOTOR_TASK_PRIORITY, NULL);
+    xTaskCreate(run_motors, "filter_run_task", MOTOR_TASK_STACK_SIZE, (void*)filter_pair, MOTOR_TASK_PRIORITY, NULL);
 
     wait(3);
 
