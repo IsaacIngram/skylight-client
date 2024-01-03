@@ -11,6 +11,7 @@
 //
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -57,6 +58,7 @@
 #define MAX_DIST 1000 // steps
 #define MAX_SPEED 20 // steps/s
 #define MAX_ACCEL 1 // steps/s
+#define MAX_DECEL 1 // steps/s
 
 // Task characteristics
 #define MOTOR_TASK_STACK_SIZE 2048
@@ -213,6 +215,14 @@ static void run_motors(void* pvParameters) {
             gpio_set_level(left_motor->dir_pin, MOTOR_DIRECTION(direction));
             gpio_set_level(right_motor->dir_pin, MOTOR_DIRECTION(direction));
 
+            // Calculate new speed
+            int deceleration_distance = (motors->current_speed * motors->current_speed) / (2 * MAX_DECEL);
+
+            if(movement_start_ticks == -1) {
+                // Starting to move with this iteration. Set to default (1)
+                set_speed(motors, 1);
+            } else if()
+
             // Adjust speed based on acceleration
             if(movement_start_ticks == -1) {
                 movement_start_ticks = xTaskGetTickCount();
@@ -259,6 +269,9 @@ static void run_motors(void* pvParameters) {
 void app_main(void)
 {
     init_app_state();
+
+    // Configure state machine
+    state = malloc(sizeof)
 
     config_motor_pins(BO_LEFT_STEP_PIN, BO_LEFT_DIR_PIN);
     config_motor_pins(BO_RIGHT_STEP_PIN, BO_RIGHT_DIR_PIN);
