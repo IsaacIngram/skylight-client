@@ -221,7 +221,7 @@ static void run_motors(void* pvParameters) {
             if(movement_start_ticks == -1) {
                 // Starting to move with this iteration. Set to default (1)
                 set_speed(motors, 1);
-            } else if()
+            }
 
             // Adjust speed based on acceleration
             if(movement_start_ticks == -1) {
@@ -269,9 +269,6 @@ static void run_motors(void* pvParameters) {
 void app_main(void)
 {
     init_app_state();
-
-    // Configure state machine
-    state = malloc(sizeof)
 
     config_motor_pins(BO_LEFT_STEP_PIN, BO_LEFT_DIR_PIN);
     config_motor_pins(BO_RIGHT_STEP_PIN, BO_RIGHT_DIR_PIN);
@@ -329,7 +326,7 @@ void app_main(void)
 
     printf("Running to 100...\n");
     blackout_pair->target_pos = 100;
-    wait(10);
+    wait(2);
 
     printf("Running to 20...\n");
     blackout_pair->target_pos = 20;
