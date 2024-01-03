@@ -1,12 +1,14 @@
 //
-// File: main.c
+// main.c
 // 
-// Author: Isaac Ingram
+// Makeplus
+// Isaac Ingram
 //
-// Purpose: Control skylights using stepper motor control, with target values
+// Control skylights using stepper motor control, with target values
 // being received over a mesh ESP-NOW network. 
 //
 // Debugging Note: Use baudrate 115200
+//
 
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"

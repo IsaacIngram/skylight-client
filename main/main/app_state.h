@@ -1,9 +1,11 @@
 // 
-// File: app_state.h
+// app_state.h
 //
-// Author: Isaac Ingram
+// Makeplus
+// Isaac Ingram
 //
-// Purpose: Provide state machine
+// Provide universal state machine
+//
 
 #ifndef APP_STATE_H
 #define APP_STATE_H
