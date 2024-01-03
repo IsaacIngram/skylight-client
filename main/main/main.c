@@ -1,3 +1,13 @@
+//
+// File: main.c
+// 
+// Author: Isaac Ingram
+//
+// Purpose: Control skylights using stepper motor control, with target values
+// being received over a mesh ESP-NOW network. 
+//
+// Debugging Note: Use baudrate 115200
+
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -5,6 +15,7 @@
 #include "driver/gpio.h"
 #include "esp_system.h"
 #include <math.h>
+#include "app_state.h"
 
 // PINOUT Definitions
 #ifdef ON_TARGET
@@ -49,30 +60,50 @@
 #define MOTOR_TASK_STACK_SIZE 2048
 #define MOTOR_TASK_PRIORITY (configMAX_PRIORITIES - 1)
 
+AppStateContainer app_state;
+
 typedef struct {
-
     int current_speed;
-
     int dir_pin;
     int step_pin;
-
     SemaphoreHandle_t mutex;
-
 } Motor;
 
 
 typedef struct {
-
     Motor* left_motor;
     Motor* right_motor;
     int current_pos;
     int target_pos;
     int current_speed;
-
 } MotorPair;
 
+/**
+ * vTaskDelay a number of seconds
+ * @param seconds Double seconds
+*/
 static void wait(double seconds) {
     vTaskDelay((seconds * 1000) / portTICK_PERIOD_MS);
+}
+
+/**
+ * Initialize the app state variable. This function will automatically restart
+ * the esp if there is an error creating the semaphore.
+*/
+void init_app_state() {
+    app_state.state = STATE_BOOT;
+    app_state.mutex = xSemaphoreCreateMutex();
+    if(app_state.mutex == NULL) {
+        printf("Error creating semaphore for state variable.\n");
+        esp_restart();
+    }
+}
+
+/**
+ * Cleanup app state.
+*/
+void cleanup_app_state() {
+    vSemaphoreDelete(app_state.mutex);
 }
 
 /**
@@ -220,8 +251,12 @@ static void run_motors(void* pvParameters) {
     }
 }
 
+/**
+ * Main function. Runs once on boot.
+*/
 void app_main(void)
 {
+    init_app_state();
 
     config_motor_pins(BO_LEFT_STEP_PIN, BO_LEFT_DIR_PIN);
     config_motor_pins(BO_RIGHT_STEP_PIN, BO_RIGHT_DIR_PIN);
@@ -267,6 +302,10 @@ void app_main(void)
     filter_pair->current_pos = 0;
     filter_pair->target_pos = 0;
     filter_pair->current_speed = 0;
+
+    if(xSemaphoreTake(app_state.mutex, portMAX_DELAY) == pdTRUE) {
+        app_state.state = STATE_IDLE;
+    }
 
     xTaskCreate(run_motors, "blackout_run_task", MOTOR_TASK_STACK_SIZE, (void*)blackout_pair, MOTOR_TASK_PRIORITY, NULL);
     xTaskCreate(run_motors, "filter_run_task", MOTOR_TASK_STACK_SIZE, (void*)filter_pair, MOTOR_TASK_PRIORITY, NULL);
