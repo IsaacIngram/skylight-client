@@ -251,8 +251,8 @@ static void run_motors(void* pvParameters) {
                 // No change in direction
 
                 // Calculate deceleration time based on current speed
-                double time_to_decel = motors->current_speed / MAX_DECEL;
-                double decel_distance = (motors->current_speed * motors->current_speed) / (2 * MAX_DECEL);
+                double time_to_decel = (double)motors->current_speed / (double)MAX_DECEL;
+                double decel_distance = ((double)motors->current_speed * (double)motors->current_speed) / (2 * MAX_DECEL);
                 printf("Decel time: %f, dist: %f\n", time_to_decel, decel_distance);
                 // Check if deceleration is necessary to reach target
                 if((int)decel_distance >= steps_to_move) {
@@ -278,7 +278,7 @@ static void run_motors(void* pvParameters) {
                     // if((motors->current_speed - speed_increment) <= 0) {
                     //     motors->direction = 0;
                     // }
-                } else if(motors->current_speed < MAX_SPEED) {
+                } else if(motors->current_speed < MAX_SPEED && decel_start_ticks == -1) {
                     // Need to accelerate
                     printf("Must accel ");
                     int new_speed = (int)round(MAX_ACCEL * elapsed_seconds);
