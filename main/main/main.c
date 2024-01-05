@@ -20,6 +20,7 @@
 #include <math.h>
 #include "app_state.h"
 
+
 // PINOUT Definitions
 #ifdef ON_TARGET
 
@@ -56,9 +57,9 @@
 #define DEFAULT_DIRECTION 0
 #define MOTOR_DIRECTION(direction) ((direction == DEFAULT_DIRECTION) ? 0 : 1)
 #define MAX_DIST 1000 // steps
-#define MAX_SPEED 20 // steps/s
-#define MAX_ACCEL 1 // steps/s
-#define MAX_DECEL 1 // steps/s
+#define MAX_SPEED 10 // steps/s
+#define MAX_ACCEL 3 // steps/s
+#define MAX_DECEL 3 // steps/s
 
 // Task characteristics
 #define MOTOR_TASK_STACK_SIZE 2048
@@ -80,6 +81,7 @@ typedef struct {
     int current_pos;
     int target_pos;
     int current_speed;
+    int direction;
 } MotorPair;
 
 /**
@@ -118,6 +120,8 @@ void cleanup_app_state() {
 static void set_speed(MotorPair *motor_pair, int speed) {
     if (speed > MAX_SPEED) {
         speed = MAX_SPEED;
+    } else if(speed < 0) {
+        speed = 0;
     }
     motor_pair->current_speed = speed;
 }
@@ -140,6 +144,20 @@ static void config_motor_pins(int step_pin, int dir_pin) {
 }
 
 /**
+ * Set the direction pins for a pair of motors
+ * @param direction Integer direction. 1 for forward, -1 for backward or 0 for backwards
+*/
+static void set_direction_pins(MotorPair *motorPair, int direction) {
+    if(direction == 1) {
+        gpio_set_level(motorPair->left_motor->dir_pin, MOTOR_DIRECTION(1));
+        gpio_set_level(motorPair->right_motor->dir_pin, MOTOR_DIRECTION(1));
+    } else if(direction == 0 || direction == -1) {
+        gpio_set_level(motorPair->left_motor->dir_pin, MOTOR_DIRECTION(0));
+        gpio_set_level(motorPair->right_motor->dir_pin, MOTOR_DIRECTION(0));
+    }
+}
+
+/**
  * Run the motor. This function will run continuously and should be scheduled
  * with a xTaskCreate function call.
  * @param pvParameters Passed in from the xTaskCreate call. Pointer to a
@@ -155,6 +173,7 @@ static void run_motors(void* pvParameters) {
     bool has_rm_mutex = false;
 
     TickType_t movement_start_ticks = -1;
+    TickType_t decel_start_ticks = -1;
 
     while(1) {
 
@@ -177,6 +196,7 @@ static void run_motors(void* pvParameters) {
         }
         // If getting the mutex failed, try again
         if (!has_lm_mutex || !has_rm_mutex) {
+            printf("Mutex failure\n");
             continue;
         }
 
@@ -186,7 +206,7 @@ static void run_motors(void* pvParameters) {
         {
             // Equalized at target position, stop all motors
             set_speed(motors, 0);
-            //printf("Motors stopped\n");
+            motors->direction = 0;
 
             // No movement, so set movement start time to -1
             movement_start_ticks = -1;
@@ -196,61 +216,114 @@ static void run_motors(void* pvParameters) {
             xSemaphoreGive(right_motor->mutex);
             has_lm_mutex = false;
             has_rm_mutex = false;
+            //printf("at target %d\n", motors->target_pos);
 
             vTaskDelay(10 / portTICK_PERIOD_MS);
 
         } else {
             // Motors need to move
 
-            int direction = 1;
-
-            // Calculate steps required
+            // Calculate steps and direction
+            int target_direction = 1;
             int steps_to_move = motors->target_pos - motors->current_pos;
-            
-            // Set direction
-            if (steps_to_move < 0) {
-                direction = 0;
+            if(steps_to_move < 0) {
+                target_direction = -1;
                 steps_to_move *= -1;
             }
-            gpio_set_level(left_motor->dir_pin, MOTOR_DIRECTION(direction));
-            gpio_set_level(right_motor->dir_pin, MOTOR_DIRECTION(direction));
 
-            // Calculate new speed
-            int deceleration_distance = (motors->current_speed * motors->current_speed) / (2 * MAX_DECEL);
-
+            // Check if movement hasn't started yet
             if(movement_start_ticks == -1) {
-                // Starting to move with this iteration. Set to default (1)
-                set_speed(motors, 1);
+                // Start at 1 tick/s in the target direction
+                motors->direction = target_direction;
+                motors->current_speed = 1;
+                movement_start_ticks = xTaskGetTickCount();
+                printf("New movement\n");
+                continue;
             }
 
-            // Adjust speed based on acceleration
-            if(movement_start_ticks == -1) {
-                movement_start_ticks = xTaskGetTickCount();
-                set_speed(motors, 1);
-            } else {
-                TickType_t current_ticks = xTaskGetTickCount();
-                TickType_t elapsed_seconds = (double)(current_ticks - movement_start_ticks) / configTICK_RATE_HZ;
-                
-                if(motors->current_speed < MAX_SPEED) {
-                    int speed_increment = round(MAX_ACCEL * elapsed_seconds);
-                    set_speed(motors, motors->current_speed + speed_increment);
+            // TickType_t is an unsigned 32 bit type
+            TickType_t current_ticks = xTaskGetTickCount();
+            double elapsed_seconds = ((double)current_ticks - (double)movement_start_ticks) / (double)configTICK_RATE_HZ;
+
+            // Check if there is a change in direction
+            int current_direction = motors->direction;
+            if (current_direction == 0 || current_direction == target_direction) {
+                // No change in direction
+
+                // Calculate deceleration time based on current speed
+                double time_to_decel = motors->current_speed / MAX_DECEL;
+                double decel_distance = (motors->current_speed * motors->current_speed) / (2 * MAX_DECEL);
+                printf("Decel time: %f, dist: %f\n", time_to_decel, decel_distance);
+                // Check if deceleration is necessary to reach target
+                if((int)decel_distance >= steps_to_move) {
+                    // Need to decelerate
+                    printf("Must decel\n");
+                    if(decel_start_ticks == -1) {
+                        decel_start_ticks = current_ticks;
+                        int new_speed = motors->current_speed - MAX_DECEL;
+                        set_speed(motors, new_speed);
+                    } else {
+                        double decel_elapsed = ((double)current_ticks - (double)decel_start_ticks) / (double)configTICK_RATE_HZ;
+                        // Limit to 1 or above so motor starts slowing immediately
+                        if(decel_elapsed < 1) {
+                            decel_elapsed = 1;
+                        }
+                        int speed_delta = (int)(MAX_DECEL * decel_elapsed);
+                        int new_speed = motors->current_speed - speed_delta;
+                        set_speed(motors, new_speed);
+                    }
+                        
+                    // int new_speed = (int)(MAX_DECEL * elapsed_seconds);
+                    // set_speed(motors, new_speed);
+                    // if((motors->current_speed - speed_increment) <= 0) {
+                    //     motors->direction = 0;
+                    // }
+                } else if(motors->current_speed < MAX_SPEED) {
+                    // Need to accelerate
+                    printf("Must accel ");
+                    int new_speed = (int)round(MAX_ACCEL * elapsed_seconds);
+                    if(new_speed < 1) {
+                        new_speed = 1;
+                    }
+                    set_speed(motors, new_speed);
+                    printf("\tnew speed: %d\n", motors->current_speed);
+
+                } else {
+                    // Maintain current velocity
+                    printf("Maintain current\n");
+                }
+            } else { 
+                // Direction changed
+                printf("Direction changed\n");
+                int speed_increment = round(MAX_DECEL * elapsed_seconds);
+                set_speed(motors, motors->current_speed - speed_increment);
+                if((motors->current_speed - speed_increment <= 0)) {
+                    motors->direction = -current_direction;
                 }
             }
 
-            // Move the motors
-            gpio_set_level(left_motor->step_pin, 1);
-            gpio_set_level(right_motor->step_pin, 1);
-            vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
-            gpio_set_level(left_motor->step_pin, 0);
-            gpio_set_level(right_motor->step_pin, 0);
-            vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
-
-            if(direction == 1) {
+            set_direction_pins(motors, motors->direction);
+            if(motors->direction == 1) {
                 motors->current_pos += 1;
-            } else {
-                motors->current_pos -= 1;
+            } else if(motors->direction == -1) {
+                motors->current_pos -=1;
             }
-            
+
+            if(motors->current_speed == 0) {
+                // Don't need to move motors; reset everything
+                movement_start_ticks = -1;
+                decel_start_ticks = -1;
+                motors->direction = 0;
+            } else {
+                // Move the motors
+                gpio_set_level(left_motor->step_pin, 1);
+                gpio_set_level(right_motor->step_pin, 1);
+                vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
+                gpio_set_level(left_motor->step_pin, 0);
+                gpio_set_level(right_motor->step_pin, 0);
+                vTaskDelay(1000 / motors->current_speed / 2 / portTICK_PERIOD_MS);
+            }
+
             printf("pos %d\n", motors->current_pos);
 
             // Give up mutex locks
@@ -302,6 +375,7 @@ void app_main(void)
     blackout_pair->current_pos = 0;
     blackout_pair->target_pos = 0;
     blackout_pair->current_speed = 0;
+    blackout_pair->direction = 0;
 
     filter_left->mutex = xSemaphoreCreateMutex();
     filter_left->dir_pin = F_LEFT_DIR_PIN;
@@ -314,27 +388,20 @@ void app_main(void)
     filter_pair->current_pos = 0;
     filter_pair->target_pos = 0;
     filter_pair->current_speed = 0;
+    filter_pair->direction = 0;
 
     if(xSemaphoreTake(app_state.mutex, portMAX_DELAY) == pdTRUE) {
         app_state.state = STATE_IDLE;
     }
 
     xTaskCreate(run_motors, "blackout_run_task", MOTOR_TASK_STACK_SIZE, (void*)blackout_pair, MOTOR_TASK_PRIORITY, NULL);
-    xTaskCreate(run_motors, "filter_run_task", MOTOR_TASK_STACK_SIZE, (void*)filter_pair, MOTOR_TASK_PRIORITY, NULL);
+    //xTaskCreate(run_motors, "filter_run_task", MOTOR_TASK_STACK_SIZE, (void*)filter_pair, MOTOR_TASK_PRIORITY, NULL);
 
     wait(3);
 
     printf("Running to 100...\n");
-    blackout_pair->target_pos = 100;
-    wait(2);
-
-    printf("Running to 20...\n");
-    blackout_pair->target_pos = 20;
-    wait(10);
-
-    printf("Running to 33...\n");
-    blackout_pair->target_pos = 33;
-    wait(5);
+    blackout_pair->target_pos = 200;
+    wait(50);
 
 }
 
